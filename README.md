@@ -1,3 +1,2 @@
-# SeizureDetection
-Trabajo realizado en la asignatura de Procesamiento Digital de Señales de la ETSIIT.
-El trabajo trata del procesamiento de señales EGG para detectar un ataque de epilepsia.
+# Apnea ECG EEG Comparison
+Implementation of a digital signal processing pipeline using machine learning to compare sleep apnea detection performance between ECG and EEG data on a multimodal dataset.
