@@ -89,9 +89,11 @@ def load_processed_pickle(file_path, modality=None, default_fs=None):
         obj = pickle.load(f)
 
     fs = None
+    annotations = None
     if isinstance(obj, dict):
         signal = _pick_signal_from_dict(obj, modality=modality)
         fs = _pick_fs_from_dict(obj)
+        annotations = obj.get("annotations")
     else:
         signal = obj
 
@@ -106,6 +108,7 @@ def load_processed_pickle(file_path, modality=None, default_fs=None):
         "patient_id": patient_id,
         "signal": signal,
         "fs": fs,
+        "annotations": annotations,
         "path": file_path,
     }
 

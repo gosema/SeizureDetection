@@ -18,10 +18,14 @@ from src.evaluation import (
 )
 
 
+METADATA_COLS = ["patient_id", "window_start", "window_end", "label"]
+WINDOW_KEY_COLS = ["patient_id", "window_start", "window_end"]
+MODEL_DROP_COLS = METADATA_COLS + ["sleep_stage", "is_sleep"]
+
+
 def make_xy(df):
     # The training script uses every feature column created by extract_features.py.
-    drop_cols = ["patient_id", "window_start", "window_end", "label"]
-    feature_cols = [col for col in df.columns if col not in drop_cols]
+    feature_cols = [col for col in df.columns if col not in MODEL_DROP_COLS]
     x = df[feature_cols].apply(pd.to_numeric, errors="coerce")
     y = df["label"].astype(int)
     return x, y, feature_cols
@@ -164,6 +168,88 @@ def train_and_save(
     df = pd.read_csv(feature_csv)
     model, metrics, y_test, y_pred, _ = train_lightgbm_groupkfold(
         df,
+        n_splits=5,
+        modality_name=modality_name,
+    )
+    save_model(model, model_path)
+    save_metrics(metrics, metrics_path)
+    plot_confusion_matrix(y_test, y_pred, figure_path, title)
+    return metrics
+
+
+def prefix_feature_columns(df, prefix):
+    rename_map = {}
+    for col in df.columns:
+        if col in MODEL_DROP_COLS:
+            continue
+        if not col.startswith(prefix):
+            rename_map[col] = f"{prefix}{col}"
+    return df.rename(columns=rename_map)
+
+
+def check_labels_match(ecg_df, eeg_df):
+    ecg_labels = ecg_df[WINDOW_KEY_COLS + ["label"]]
+    eeg_labels = eeg_df[WINDOW_KEY_COLS + ["label"]]
+    matched_labels = ecg_labels.merge(
+        eeg_labels,
+        on=WINDOW_KEY_COLS,
+        how="inner",
+        suffixes=("_ecg", "_eeg"),
+    )
+    mismatched = matched_labels[
+        matched_labels["label_ecg"] != matched_labels["label_eeg"]
+    ]
+    if not mismatched.empty:
+        raise ValueError(
+            "ECG and EEG labels do not match for "
+            f"{len(mismatched)} patient/window rows"
+        )
+    print("Verified ECG and EEG labels match for merged patient/window rows")
+
+
+def make_combined_feature_table(ecg_feature_csv, eeg_feature_csv):
+    ecg_df = pd.read_csv(ecg_feature_csv)
+    eeg_df = pd.read_csv(eeg_feature_csv)
+
+    print(f"ECG feature rows: {len(ecg_df)}")
+    print(f"EEG feature rows: {len(eeg_df)}")
+
+    check_labels_match(ecg_df, eeg_df)
+
+    ecg_df = ecg_df.drop(columns=["sleep_stage", "is_sleep"], errors="ignore")
+    eeg_df = eeg_df.drop(columns=["sleep_stage", "is_sleep"], errors="ignore")
+    ecg_df = prefix_feature_columns(ecg_df, "ecg_")
+    eeg_df = prefix_feature_columns(eeg_df, "eeg_")
+    combined_df = ecg_df.merge(
+        eeg_df,
+        on=METADATA_COLS,
+        how="inner",
+    )
+
+    print(f"Combined feature rows after inner merge: {len(combined_df)}")
+    duplicated = combined_df.duplicated(subset=WINDOW_KEY_COLS).sum()
+    if duplicated:
+        raise ValueError(
+            "Combined feature table has duplicated patient/window rows: "
+            f"{duplicated}"
+        )
+    print("Verified no duplicated patient_id/window_start/window_end rows after merging")
+
+    return combined_df
+
+
+def train_combined_and_save(
+    ecg_feature_csv,
+    eeg_feature_csv,
+    model_path,
+    metrics_path,
+    figure_path,
+    title,
+    modality_name="Combined",
+):
+    combined_df = make_combined_feature_table(ecg_feature_csv, eeg_feature_csv)
+    model, metrics, y_test, y_pred, _ = train_lightgbm_groupkfold(
+        combined_df,
         n_splits=5,
         modality_name=modality_name,
     )

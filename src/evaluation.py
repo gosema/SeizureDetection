@@ -50,6 +50,8 @@ def plot_confusion_matrix(y_true, y_pred, output_path, title):
         labels=[0, 1],
         display_labels=["0", "1"],
         cmap="Blues",
+        normalize="all",
+        values_format=".2f",
     )
     display.ax_.set_title(title)
     display.ax_.set_xlabel("Predicted label")

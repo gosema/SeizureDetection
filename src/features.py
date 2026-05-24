@@ -3,7 +3,11 @@ import pandas as pd
 from scipy.signal import find_peaks
 
 from src import config
-from src.annotations import label_windows
+from src.annotations import (
+    extract_sleep_stage_events,
+    label_windows,
+    stage_for_window,
+)
 
 
 def window_times(signal_length, fs, window_seconds=config.WINDOW_SECONDS):
@@ -155,6 +159,7 @@ def build_feature_rows(record, events, modality):
     fs = float(record["fs"])
     starts, ends, samples_per_window = window_times(len(signal), fs)
     labels = label_windows(starts, ends, events)
+    stage_events = extract_sleep_stage_events(record.get("annotations"))
 
     rows = []
     extractor = extract_ecg_features if modality == "ecg" else extract_eeg_features
@@ -170,7 +175,10 @@ def build_feature_rows(record, events, modality):
             "window_start": float(start_time),
             "window_end": float(end_time),
         }
+        sleep_stage = stage_for_window(start_time, end_time, stage_events)
         row.update(extractor(window, fs))
+        row["sleep_stage"] = sleep_stage
+        row["is_sleep"] = 0 if sleep_stage == "W" else 1
         row["label"] = int(label)
         rows.append(row)
 
